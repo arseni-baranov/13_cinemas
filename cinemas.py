@@ -5,13 +5,13 @@ import random
 import argparse
 
 
-afisha_url = "http://www.afisha.ru/msk/schedule_cinema/"
-kinopoisk_url = "http://kinopoisk.ru/index.php"
+AFISHA_URL = "http://www.afisha.ru/msk/schedule_cinema/"
+KINOPOISK_URL = "http://kinopoisk.ru/index.php"
 
-proxy_list = "http://www.freeproxy-list.ru/api/proxy?anonymity=false&token=demo"
-proxy_re = re.compile(r'\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}:\d{1,4}')
+PROXY_LIST = "http://www.freeproxy-list.ru/api/proxy?anonymity=false&token=demo"
+PROXY_RE = re.compile(r'\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}:\d{1,4}')
 
-user_agents = [
+USER_AGENTS = [
     'Mozilla/5.0 (X11; Linux i686; rv:50.0) Gecko/20100101 Firefox/50.0',
     'Opera/9.80 (Windows NT 6.2; WOW64) Presto/2.12.388 Version/12.17',
     'Mozilla/5.0 (Windows NT 6.3; WOW64; rv:36.0) Gecko/20100101 Firefox/36.0'
@@ -28,13 +28,13 @@ def get_console_args():
 
 
 def get_proxies_list():
-    html = requests.get(proxy_list).text
+    html = requests.get(PROXY_LIST).text
     proxies = html.split('\n')
     return proxies
 
 
 def parse_afisha_page(max=10):
-    soup = BeautifulSoup(requests.get(afisha_url).text, "html.parser")
+    soup = BeautifulSoup(requests.get(AFISHA_URL).text, "html.parser")
 
     schedule = soup.find_all("div", id="schedule")[0]
     divs = schedule.find_all("h3", class_="usetags", limit=max)
@@ -48,29 +48,27 @@ def fetch_movies(movies, proxies):
     session = requests.Session()
 
     for title in movies:
-        while 1:
+        while True:
             try:
                 print("Fetching movie:", title)
                 payload = {"kp_query": title, "first": "yes"}
-                header = {'User-Agent': random.choice(user_agents)}
+                header = {'User-Agent': random.choice(USER_AGENTS)}
                 proxy = {"http": random.choice(proxies)}
-                movie_html = session.get(kinopoisk_url, params=payload, timeout=10, headers=header, proxies=proxy).text
-
+                movie_html = session.get(KINOPOISK_URL, params=payload, timeout=10, headers=header, proxies=proxy).text
                 soup = BeautifulSoup(movie_html, "html.parser")
-                movie_in_production = soup.findAll('td', text=re.compile('статус производства:'))
-                if movie_in_production:
-                    rating, people_rated = '?', '?'
-                else:
-                    rating = soup.find("span", class_="rating_ball").text
-                    people_rated = soup.find("span", class_="ratingCount").text.replace(u'\xa0', u' ')
-            except (AttributeError, requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError,
+                rating = soup.find("span", class_="rating_ball").text
+                people_rated = soup.find("span", class_="ratingCount").text.replace(u'\xa0', u' ')
+            except AttributeError:
+                rating, people_rated = '?', '?'
+                break
+            except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError,
                     requests.exceptions.ProxyError, requests.exceptions.ReadTimeout) as error:
-                print('\nError:', error)
-                print('trying again...\n')
+                    print('\nError:', error)
+                    print('trying again...\n')
             else:
                 break
 
-        yield [rating, people_rated]
+        yield rating, people_rated
 
 
 def print_movies(movie_data, cinema_sort=False):
