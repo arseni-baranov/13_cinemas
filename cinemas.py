@@ -3,6 +3,7 @@ import requests
 import re
 import random
 import argparse
+import logging
 
 
 AFISHA_URL = "http://www.afisha.ru/msk/schedule_cinema/"
@@ -44,34 +45,39 @@ def parse_afisha_page(max=10):
            [len(theaters.findAll("td", class_="b-td-item")) for theaters in theater_tbl]
 
 
-def fetch_movies(movies, proxies):
+def fetch_movie(title, proxy):
     session = requests.Session()
+    payload = {"kp_query": title, "first": "yes"}
+    header = {'User-Agent': random.choice(USER_AGENTS)}
+    movie_html = session.get(KINOPOISK_URL, params=payload, timeout=10, headers=header, proxies=proxy).text
+    soup = BeautifulSoup(movie_html, "html.parser")
 
+    try:
+        rating = soup.find("span", class_="rating_ball").text
+        people_rated = soup.find("span", class_="ratingCount").text.replace(u'\xa0', u' ')
+    except AttributeError:
+        rating, people_rated = None, None
+
+    return rating, people_rated
+
+
+def collect_movies_log_status(movies, proxies, max_tries=10):
     for title in movies:
-        while True:
+        try_counter = 0
+        while try_counter < max_tries:
+            logging.debug("Fetching movie: {}".format(title))
+            proxy = {"http": random.choice(proxies)}
             try:
-                print("Fetching movie:", title)
-                payload = {"kp_query": title, "first": "yes"}
-                header = {'User-Agent': random.choice(USER_AGENTS)}
-                proxy = {"http": random.choice(proxies)}
-                movie_html = session.get(KINOPOISK_URL, params=payload, timeout=10, headers=header, proxies=proxy).text
-                soup = BeautifulSoup(movie_html, "html.parser")
-                rating = soup.find("span", class_="rating_ball").text
-                people_rated = soup.find("span", class_="ratingCount").text.replace(u'\xa0', u' ')
-            except AttributeError:
-                rating, people_rated = '?', '?'
-                break
-            except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError,
-                    requests.exceptions.ProxyError, requests.exceptions.ReadTimeout) as error:
-                    print('\nError:', error)
-                    print('trying again...\n')
+                rating, people_rated = fetch_movie(title, proxy)
+            except IOError:
+                logging.error('Error with parsing movie, trying again...\n')
+                try_counter += 1
             else:
+                yield rating, people_rated
                 break
 
-        yield rating, people_rated
 
-
-def print_movies(movie_data, cinema_sort=False):
+def sort_movies(movie_data, cinema_sort=False):
     if cinema_sort:
         sorting_function = lambda el: el[1]
     else:
@@ -79,6 +85,10 @@ def print_movies(movie_data, cinema_sort=False):
 
     movie_data.sort(key=sorting_function, reverse=True)
 
+    return movie_data
+
+
+def print_movies(movie_data):
     for item in movie_data:
         print("\n{0}:\nПоказ в {1} кинотеатрах\nНабрал: {2} по оценкам {3} пользователей"
               .format(item[0], item[1], item[2][0], item[2][1]), sep="\n")
@@ -91,12 +101,17 @@ def main():
     proxies = get_proxies_list()
     scores = []
 
-    for item in fetch_movies(movies, proxies):
-        scores.append(item)
+    logging.basicConfig(filename="logfile.log", level=logging.DEBUG)
+
+    for item in collect_movies_log_status(movies, proxies):
+        if item is None:
+            scores.append('')
 
     movie_data = list(zip(movies, theaters, scores))
     sorting = bool(args.showings)
-    print_movies(movie_data, cinema_sort=sorting)
+    sorted_data = sort_movies(movie_data, cinema_sort=sorting)
+    print_movies(sorted_data)
+
 
 if __name__ == "__main__":
     main()
