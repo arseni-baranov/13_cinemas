@@ -34,12 +34,12 @@ def get_proxies_list():
     return proxies
 
 
-def parse_afisha_page(max=10):
+def parse_afisha_page(amount=10):
     soup = BeautifulSoup(requests.get(AFISHA_URL).text, "html.parser")
 
     schedule = soup.find_all("div", id="schedule")[0]
-    divs = schedule.find_all("h3", class_="usetags", limit=max)
-    theater_tbl = schedule.find_all("table", limit=max)
+    divs = schedule.find_all("h3", class_="usetags", limit=amount)
+    theater_tbl = schedule.find_all("table", limit=amount)
 
     return [movie.find("a").text for movie in divs], \
            [len(theaters.findAll("td", class_="b-td-item")) for theaters in theater_tbl]
